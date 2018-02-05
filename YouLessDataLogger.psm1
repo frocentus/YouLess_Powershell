@@ -1,11 +1,10 @@
-﻿
-<#
+﻿<#
 
-Author: Harald Reisinger
-Version: 0.1
-Version History: initial release
+    Author: Harald Reisinger
+    Version: 0.1
+    Version History: initial release
 
-Purpose: Querying a YouLess-EnergyMonitor DataLogger from Powershell
+    Purpose: Querying a YouLess-EnergyMonitor DataLogger from Powershell
 
 #>
 
@@ -13,10 +12,10 @@ function Get-YouLessLS110StatusInfo
 {
   <#
       .SYNOPSIS
-      Gets you a basic status info about your Energy-Monitor
+      Gets you a basic status info about your LS110 Energy-Monitor
 
       .DESCRIPTION
-      This command calls the YouLess Energy-Monitor an gets some basis status
+      This command calls the YouLess LS110 Energy-Monitor an gets some basis status
       info. It calls the YouLess Energy-Monitor via an http-call to get the basic
       status info and transform it into a better readable Object
 
@@ -26,7 +25,7 @@ function Get-YouLessLS110StatusInfo
 
       .EXAMPLE
       Get-YouLessStatusInfo -DeviceAddress "192.168.0.1"
-      This command sends a status request to the YouLess EnergyMonitor at IP-Address
+      This command sends a status request to the YouLess LS110 EnergyMonitor at IP-Address
       192.168.0.1 and returns a basic status-info if it succeeds
 
       .INPUTS
@@ -38,7 +37,7 @@ function Get-YouLessLS110StatusInfo
       Return the an Object, which contains the Status of your Energy-Monitor in its Properties
 
       .LINK
-      Get-YouLessHistoricalData
+      Get-YouLessLS110HistoricalData
       Get-YouLessLS110Measurements 
   #>
   
@@ -97,7 +96,7 @@ function Get-YouLessLS110StatusInfo
 }
 
 
-function Get-YouLessHistoricalData 
+function Get-YouLessLS110HistoricalData 
 {
   <#
       .SYNOPSIS
@@ -172,14 +171,172 @@ function Get-YouLessHistoricalData
   begin {
     $_offset = $PSBoundParameters.Offset
     $_lookuptable = @{
-      'Year' = 'h'
+      'Year' = 'm'
       'Week' = 'w'
       'Day' = 'd'
-      'Hour' = 'm'
+      'Hour' = 'h'
     }
   } 
   
   process {
-      Invoke-RestMethod -Uri ('http://{0}/V?{1}={2}&f=j' -f $DeviceAddress, $_lookuptable[$Range], $_offset) -Method Get
+  $uri = ('http://{0}/V?{1}={2}&f=j' -f $DeviceAddress, $_lookuptable[$Range], $_offset)
+      Invoke-RestMethod -Uri $uri -Method Get
+  }
+}
+
+function Get-YouLessLS110Measurements 
+{
+  <#
+      .SYNOPSIS
+      Describe purpose of "Get-YouLessMeasurements" in 1-2 sentences.
+
+      .DESCRIPTION
+      Add a more complete description of what the function does.
+
+      .PARAMETER DeviceAddress
+      Specifies the address to query in IP4-Format. Wildcards are not permitted. 
+      This parameter is required.
+
+      .PARAMETER Range
+      Describe parameter -Range.
+
+      .EXAMPLE
+      Get-YouLessMeasurements -DeviceAddress Value -Range Value
+      Describe what this call does
+
+      .NOTES
+      Place additional notes here.
+
+      .LINK
+      URLs to related sites
+      The first link is opened by Get-Help -Online Get-YouLessMeasurements
+
+      .INPUTS
+      List of input types that are accepted by this function.
+
+      .OUTPUTS
+      List of output types produced by this function.
+  #>
+
+
+  param(
+    [Parameter(Position = 0,HelpMessage = 'Add help message for user',Mandatory,ValueFromPipeline)]
+    [String]$DeviceAddress,
+  
+    [parameter(Position = 1,HelpMessage = 'Add help message for user', Mandatory)]
+    [ValidateSet('Hour','Day','Week','Year')]
+    [String]$Range
+  )
+  function Select-YouLessMeasurements 
+  {
+    <#
+        .SYNOPSIS
+        Converts the JSON-Object-Structure returned from the YouLess-Energy-Monitor into Powershell-Objects
+        for easier handling
+
+        .DESCRIPTION
+        Add a more complete description of what the function does.
+
+        .PARAMETER InputObject
+        Describe parameter -InputObject.
+
+        .PARAMETER StartTime
+        Describe parameter -StartTime.
+
+        .PARAMETER Unit
+        Describe parameter -Unit.
+
+        .PARAMETER StepSize
+        Describe parameter -StepSize.
+
+        .EXAMPLE
+        Select-YouLessMeasurements -InputObject Value -StartTime Value -Unit Value -StepSize Value
+        Describe what this call does
+
+        .NOTES
+        Place additional notes here.
+
+        .LINK
+        URLs to related sites
+        The first link is opened by Get-Help -Online Select-YouLessMeasurements
+
+        .INPUTS
+        List of input types that are accepted by this function.
+
+        .OUTPUTS
+        List of output types produced by this function.
+    #>
+
+
+    param
+    (
+      [String]
+      [Parameter(Mandatory, ValueFromPipeline, HelpMessage = 'Data to process')]
+      $InputObject,
+      
+      [Parameter(Mandatory,HelpMessage = 'Add help message for user')]
+      [DateTime]
+      $StartTime,
+    
+      [string]
+      $Unit = 'Watt',
+    
+      [int]
+      $StepSize = 1
+    )
+    
+    begin {
+      $i = 0
+      $_formatProvider = New-Object -TypeName System.Globalization.CultureInfo -ArgumentList 'de-AT'
+    }
+    
+    process
+    {
+      $converted = [convert]::ToDouble($InputObject, $_formatProvider)
+  
+      $props = @{
+        DateTime = $StartTime.AddSeconds($i)
+        Value    = $converted
+        Unit     = $Unit
+      }
+    
+      New-Object -TypeName psobject -Property $props
+    
+      $i = $i + $StepSize
+    }
+  } 
+  
+  $_range = $null
+    
+  switch ($Range) {
+  
+    'Hour' 
+    {
+      $_range = @(2..1)
+    }
+    
+    'Day' 
+    {
+      $_range = @(3..1)
+    }
+    
+    'Week' 
+    {
+      $_range = @(6..0)
+    }
+    
+    'Year' 
+    {
+      $_range = @(12..1)
+    }
+  }
+  
+  $_range | ForEach-Object -Process {
+    $data = Get-YouLessLS110HistoricalData -DeviceAddress $DeviceAddress -Range $Range -Offset $_ 
+    $data.val |
+    Where-Object -FilterScript {
+      $_ -ne $null
+    } |
+    Select-YouLessMeasurements -StartTime (Get-Date -Date $data.tm) -Unit $data.un -StepSize $data.dt
   }
 }
