@@ -172,15 +172,16 @@ function Get-YouLessLS110HistoricalData
     $_offset = $PSBoundParameters.Offset
     $_lookuptable = @{
       'Year' = 'm'
-      'Week' = 'w'
-      'Day' = 'd'
+      'Week' = 'd'
+      'Day' = 'w'
       'Hour' = 'h'
     }
   } 
   
   process {
-  $uri = ('http://{0}/V?{1}={2}&f=j' -f $DeviceAddress, $_lookuptable[$Range], $_offset)
-      Invoke-RestMethod -Uri $uri -Method Get
+    $uri = ('http://{0}/V?{1}={2}&f=j' -f $DeviceAddress, $_lookuptable[$Range], $_offset)
+    Write-Verbose -Message ('Querying URL: {0}' -f $uri)
+    Invoke-RestMethod -Uri $uri -Method Get
   }
 }
 
@@ -227,84 +228,6 @@ function Get-YouLessLS110Measurements
     [ValidateSet('Hour','Day','Week','Year')]
     [String]$Range
   )
-  function Select-YouLessMeasurements 
-  {
-    <#
-        .SYNOPSIS
-        Converts the JSON-Object-Structure returned from the YouLess-Energy-Monitor into Powershell-Objects
-        for easier handling
-
-        .DESCRIPTION
-        Add a more complete description of what the function does.
-
-        .PARAMETER InputObject
-        Describe parameter -InputObject.
-
-        .PARAMETER StartTime
-        Describe parameter -StartTime.
-
-        .PARAMETER Unit
-        Describe parameter -Unit.
-
-        .PARAMETER StepSize
-        Describe parameter -StepSize.
-
-        .EXAMPLE
-        Select-YouLessMeasurements -InputObject Value -StartTime Value -Unit Value -StepSize Value
-        Describe what this call does
-
-        .NOTES
-        Place additional notes here.
-
-        .LINK
-        URLs to related sites
-        The first link is opened by Get-Help -Online Select-YouLessMeasurements
-
-        .INPUTS
-        List of input types that are accepted by this function.
-
-        .OUTPUTS
-        List of output types produced by this function.
-    #>
-
-
-    param
-    (
-      [String]
-      [Parameter(Mandatory, ValueFromPipeline, HelpMessage = 'Data to process')]
-      $InputObject,
-      
-      [Parameter(Mandatory,HelpMessage = 'Add help message for user')]
-      [DateTime]
-      $StartTime,
-    
-      [string]
-      $Unit = 'Watt',
-    
-      [int]
-      $StepSize = 1
-    )
-    
-    begin {
-      $i = 0
-      $_formatProvider = New-Object -TypeName System.Globalization.CultureInfo -ArgumentList 'de-AT'
-    }
-    
-    process
-    {
-      $converted = [convert]::ToDouble($InputObject, $_formatProvider)
-  
-      $props = @{
-        DateTime = $StartTime.AddSeconds($i)
-        Value    = $converted
-        Unit     = $Unit
-      }
-    
-      New-Object -TypeName psobject -Property $props
-    
-      $i = $i + $StepSize
-    }
-  } 
   
   $_range = $null
     
@@ -332,11 +255,71 @@ function Get-YouLessLS110Measurements
   }
   
   $_range | ForEach-Object -Process {
-    $data = Get-YouLessLS110HistoricalData -DeviceAddress $DeviceAddress -Range $Range -Offset $_ 
-    $data.val |
-    Where-Object -FilterScript {
-      $_ -ne $null
-    } |
-    Select-YouLessMeasurements -StartTime (Get-Date -Date $data.tm) -Unit $data.un -StepSize $data.dt
+    Get-YouLessLS110HistoricalData -DeviceAddress $DeviceAddress -Range $Range -Offset $_ `
+     | Select-YouLessMeasurements 
   }
 }
+
+  function Select-YouLessMeasurements 
+  {
+    <#
+        .SYNOPSIS
+        Converts the JSON-Object-Structure returned from the YouLess-Energy-Monitor into Powershell-Objects
+        for easier handling
+
+        .DESCRIPTION
+        Add a more complete description of what the function does.
+
+        .PARAMETER RawResponse
+        Describe parameter -InputObject.
+
+        .EXAMPLE
+        Select-YouLessMeasurements -InputObject Value -StartTime Value -Unit Value -StepSize Value
+        Describe what this call does
+
+        .NOTES
+        Place additional notes here.
+
+        .LINK
+        URLs to related sites
+        The first link is opened by Get-Help -Online Select-YouLessMeasurements
+
+        .INPUTS
+        List of input types that are accepted by this function.
+
+        .OUTPUTS
+        List of output types produced by this function.
+    #>
+
+
+    param
+    (
+      [PSObject]
+      [Parameter(Mandatory, ValueFromPipeline, HelpMessage = 'Data to process')]
+      $RawResponse
+    )
+    
+    begin {
+      $_formatProvider = New-Object -TypeName System.Globalization.CultureInfo -ArgumentList 'de-AT'
+    }
+    
+    process
+    {
+      $StartTime = Get-Date -Date ($RawResponse.tm)
+      $i = 0
+      
+      $RawResponse.val | Where-Object { $_ -ne $null } | ForEach-Object {
+        $converted = [convert]::ToDouble($_, $_formatProvider)
+  
+        $props = @{
+          DateTime = $StartTime.AddSeconds($i)
+          Value    = $converted
+          Unit     = $RawResponse.un
+        }
+        $i = $i + $RawResponse.dt
+        
+        New-Object -TypeName psobject -Property $props
+      }
+
+    }
+  }
