@@ -308,7 +308,7 @@ function Get-YouLessLS110Measurements
       $StartTime = Get-Date -Date ($RawResponse.tm)
       $i = 0
       
-      $RawResponse.val | Where-Object { $_ -ne $null } | ForEach-Object {
+      $RawResponse.val | Select-Object -SkipLast 1 | ForEach-Object {
         $converted = [convert]::ToDouble($_, $_formatProvider)
   
         $props = @{
@@ -318,7 +318,7 @@ function Get-YouLessLS110Measurements
         }
         $i = $i + $RawResponse.dt
         
-        New-Object -TypeName psobject -Property $props
+        [PSCustomObject]$props
       }
 
     }
